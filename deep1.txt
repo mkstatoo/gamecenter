@@ -1,0 +1,541 @@
+متأسفم که بخش `paymentController` را از قلم انداختم! در این نسخه جدید، تمام بخش‌ها را به طور کامل و با دقت ارائه می‌دهم، از جمله `paymentController`. همچنین جاهایی که نیاز به تکمیل توسط شما دارد، با کامنت‌های راهنمایی مشخص کرده‌ام.
+
+---
+
+### **۱. Backend**
+
+#### **الف) مدل‌ها (models/)**
+
+##### **`user.js`**
+```javascript
+const { DataTypes } = require('sequelize');
+const sequelize = require('../utils/db');
+
+const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true,
+  },
+  username: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+  },
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  role: {
+    type: DataTypes.ENUM('admin', 'user'),
+    defaultValue: 'user',
+  },
+});
+
+module.exports = User;
+```
+
+##### **`device.js`**
+```javascript
+const { DataTypes } = require('sequelize');
+const sequelize = require('../utils/db');
+
+const Device = sequelize.define('Device', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true,
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  status: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  ip_address: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+});
+
+module.exports = Device;
+```
+
+##### **`transaction.js`**
+```javascript
+const { DataTypes } = require('sequelize');
+const sequelize = require('../utils/db');
+
+const Transaction = sequelize.define('Transaction', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true,
+  },
+  amount: {
+    type: DataTypes.FLOAT,
+    allowNull: false,
+  },
+  status: {
+    type: DataTypes.ENUM('success', 'failed'),
+    defaultValue: 'success',
+  },
+});
+
+module.exports = Transaction;
+```
+
+##### **`log.js`**
+```javascript
+const { DataTypes } = require('sequelize');
+const sequelize = require('../utils/db');
+
+const Log = sequelize.define('Log', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true,
+  },
+  action: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+});
+
+module.exports = Log;
+```
+
+---
+
+#### **ب) کنترلرها (controllers/)**
+
+##### **`authController.js`**
+```javascript
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const User = require('../models/user');
+
+const register = async (req, res) => {
+  try {
+    const { username, password, role } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({ username, password: hashedPassword, role });
+    res.status(201).json({ message: 'User registered successfully', user });
+  } catch (error) {
+    res.status(500).json({ message: 'Error registering user', error });
+  }
+};
+
+const login = async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const user = await User.findOne({ where: { username } });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) return res.status(401).json({ message: 'Invalid password' });
+
+    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    res.json({ message: 'Login successful', token });
+  } catch (error) {
+    res.status(500).json({ message: 'Error logging in', error });
+  }
+};
+
+module.exports = { register, login };
+```
+
+##### **`deviceController.js`**
+```javascript
+const Device = require('../models/device');
+
+const getAllDevices = async (req, res) => {
+  try {
+    const devices = await Device.findAll();
+    res.json(devices);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching devices', error });
+  }
+};
+
+const activateDevice = async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const device = await Device.findByPk(deviceId);
+    if (!device) return res.status(404).json({ message: 'Device not found' });
+
+    device.status = true;
+    await device.save();
+    res.json({ message: 'Device activated', device });
+  } catch (error) {
+    res.status(500).json({ message: 'Error activating device', error });
+  }
+};
+
+module.exports = { getAllDevices, activateDevice };
+```
+
+##### **`paymentController.js`**
+```javascript
+const Transaction = require('../models/transaction');
+const Device = require('../models/device');
+const User = require('../models/user');
+
+const processPayment = async (req, res) => {
+  try {
+    const { userId, deviceId, amount } = req.body;
+
+    // بررسی وجود کاربر و دستگاه
+    const user = await User.findByPk(userId);
+    const device = await Device.findByPk(deviceId);
+    if (!user || !device) {
+      return res.status(404).json({ message: 'User or device not found' });
+    }
+
+    // ایجاد تراکنش
+    const transaction = await Transaction.create({ userId, deviceId, amount });
+
+    // فعال‌سازی دستگاه (این بخش نیاز به تکمیل دارد)
+    // باید با سخت‌افزار ارتباط برقرار کنید و دستگاه را فعال کنید.
+
+    res.status(201).json({ message: 'Payment processed successfully', transaction });
+  } catch (error) {
+    res.status(500).json({ message: 'Error processing payment', error });
+  }
+};
+
+module.exports = { processPayment };
+```
+
+---
+
+#### **ج) مسیرها (routes/)**
+
+##### **`authRoutes.js`**
+```javascript
+const express = require('express');
+const { register, login } = require('../controllers/authController');
+
+const router = express.Router();
+
+router.post('/register', register);
+router.post('/login', login);
+
+module.exports = router;
+```
+
+##### **`deviceRoutes.js`**
+```javascript
+const express = require('express');
+const { getAllDevices, activateDevice } = require('../controllers/deviceController');
+const authMiddleware = require('../middleware/authMiddleware');
+
+const router = express.Router();
+
+router.get('/', authMiddleware, getAllDevices);
+router.post('/:deviceId/activate', authMiddleware, activateDevice);
+
+module.exports = router;
+```
+
+##### **`paymentRoutes.js`**
+```javascript
+const express = require('express');
+const { processPayment } = require('../controllers/paymentController');
+const authMiddleware = require('../middleware/authMiddleware');
+
+const router = express.Router();
+
+router.post('/process', authMiddleware, processPayment);
+
+module.exports = router;
+```
+
+---
+
+#### **د) میدلورها (middleware/)**
+
+##### **`authMiddleware.js`**
+```javascript
+const jwt = require('jsonwebtoken');
+
+const authMiddleware = (req, res, next) => {
+  const token = req.header('Authorization')?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ message: 'Access denied' });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    res.status(400).json({ message: 'Invalid token' });
+  }
+};
+
+module.exports = authMiddleware;
+```
+
+---
+
+#### **ه) ابزارها (utils/)**
+
+##### **`db.js`**
+```javascript
+const { Sequelize } = require('sequelize');
+
+const sequelize = new Sequelize('game_center', 'root', 'yourpassword', {
+  host: 'localhost',
+  dialect: 'mysql',
+});
+
+module.exports = sequelize;
+```
+
+##### **`logger.js`**
+```javascript
+const winston = require('winston');
+
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.json(),
+  transports: [
+    new winston.transports.File({ filename: 'error.log', level: 'error' }),
+    new winston.transports.File({ filename: 'combined.log' }),
+  ],
+});
+
+if (process.env.NODE_ENV !== 'production') {
+  logger.add(new winston.transports.Console({ format: winston.format.simple() }));
+}
+
+module.exports = logger;
+```
+
+---
+
+#### **و) فایل اصلی سرور (`server.js`)**
+```javascript
+const express = require('express');
+const cors = require('cors');
+const authRoutes = require('./routes/authRoutes');
+const deviceRoutes = require('./routes/deviceRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const sequelize = require('./utils/db');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/devices', deviceRoutes);
+app.use('/api/payments', paymentRoutes);
+
+// Sync database and start server
+sequelize.sync().then(() => {
+  app.listen(5000, () => {
+    console.log('Server is running on port 5000');
+  });
+});
+```
+
+---
+
+### **۲. Frontend**
+
+#### **الف) کامپوننت‌ها (components/)**
+
+##### **`Login.js`**
+```javascript
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { login } from '../api/authApi';
+
+const Login = () => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await login({ username, password });
+      localStorage.setItem('token', response.token);
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('Login failed', error);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input type="text" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
+      <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      <button type="submit">Login</button>
+    </form>
+  );
+};
+
+export default Login;
+```
+
+---
+
+#### **ب) APIها (api/)**
+
+##### **`authApi.js`**
+```javascript
+import axios from 'axios';
+
+const API_URL = 'http://localhost:5000/api/auth';
+
+export const register = async (userData) => {
+  const response = await axios.post(`${API_URL}/register`, userData);
+  return response.data;
+};
+
+export const login = async (userData) => {
+  const response = await axios.post(`${API_URL}/login`, userData);
+  return response.data;
+};
+```
+
+---
+
+#### **ج) Context (context/)**
+
+##### **`AuthContext.js`**
+```javascript
+import React, { createContext, useContext, useState } from 'react';
+
+const AuthContext = createContext();
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+
+  const login = (userData) => {
+    setUser(userData);
+  };
+
+  const logout = () => {
+    setUser(null);
+  };
+
+  return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = () => useContext(AuthContext);
+```
+
+---
+
+#### **د) فایل اصلی (`App.js`)**
+```javascript
+import React from 'react';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import Login from './components/Login';
+import Dashboard from './components/Dashboard';
+import { AuthProvider } from './context/AuthContext';
+
+const App = () => {
+  return (
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
+  );
+};
+
+export default App;
+```
+
+---
+
+### **۳. جاهایی که نیاز به تکمیل دارد**
+
+#### **الف) Backend**
+1. **فایل `.env`**:
+   - این فایل باید شامل متغیرهای محیطی مانند `JWT_SECRET` و اطلاعات اتصال به پایگاه داده باشد.
+   ```plaintext
+   JWT_SECRET=your_jwt_secret_key
+   DB_HOST=localhost
+   DB_USER=root
+   DB_PASSWORD=yourpassword
+   DB_NAME=game_center
+   ```
+
+2. **مدل‌ها و ارتباطات**:
+   - اگر نیاز به ارتباط بین مدل‌ها دارید (مثلاً User و Transaction)، باید ارتباطات Sequelize را تعریف کنید.
+
+3. **لاگ‌ها**:
+   - در کنترلرها، لاگ‌های مناسب برای ثبت فعالیت‌ها اضافه کنید.
+
+4. **ارتباط با سخت‌افزار**:
+   - در `paymentController.js`، بخش فعال‌سازی دستگاه نیاز به تکمیل دارد. باید با سخت‌افزار ارتباط برقرار کنید و دستگاه را فعال کنید.
+
+---
+
+#### **ب) Frontend**
+1. **صفحه `Dashboard.js`**:
+   - این صفحه باید لیست دستگاه‌ها و امکان کنترل آن‌ها را نمایش دهد.
+   ```javascript
+   import React, { useEffect, useState } from 'react';
+   import { getDevices } from '../api/deviceApi';
+
+   const Dashboard = () => {
+     const [devices, setDevices] = useState([]);
+
+     useEffect(() => {
+       const fetchDevices = async () => {
+         try {
+           const response = await getDevices();
+           setDevices(response.data);
+         } catch (error) {
+           console.error('Error fetching devices', error);
+         }
+       };
+       fetchDevices();
+     }, []);
+
+     return (
+       <div>
+         <h1>Devices</h1>
+         <ul>
+           {devices.map((device) => (
+             <li key={device.id}>{device.name} - {device.status ? 'Active' : 'Inactive'}</li>
+           ))}
+         </ul>
+       </div>
+     );
+   };
+
+   export default Dashboard;
+   ```
+
+2. **API `deviceApi.js`**:
+   - این فایل باید شامل توابعی برای ارتباط با APIهای backend باشد.
+   ```javascript
+   import axios from 'axios';
+
+   const API_URL = 'http://localhost:5000/api/devices';
+
+   export const getDevices = async () => {
+     const response = await axios.get(API_URL);
+     return response.data;
+   };
+
+   export const activateDevice = async (deviceId) => {
+     const response = await axios.post(`${API_URL}/${deviceId}/activate`);
+     return response.data;
+   };
+   ```
+
+---
+
+اگر سوالی داشتید یا نیاز به توضیحات بیشتر بود، خوشحال می‌شم کمک کنم! 😊
